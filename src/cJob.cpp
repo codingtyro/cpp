@@ -11,6 +11,7 @@ void CJob::setJobName(std::string jobName){
     }
 }
 
+
 CJob::CJob() :m_JobName(""),m_WorkThread(nullptr),m_JobNo(0){
 
 }
