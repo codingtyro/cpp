@@ -38,7 +38,7 @@ protected:
     void appendToIdleList(CWorkerThread* jobThread);//线程加入空闲队列
     void moveToBusyList(CWorkerThread* idleThread);//线程加入忙碌队列
     void moveToIdleList(CWorkerThread* busyThread);//线程移入空闲队列
-    void deleteIdleList(int num); //删除空闲线程
+    void deleteIdleThread(int num); //删除空闲线程
     void createIdleThread(int num); //创建空闲线程
 public:
     CThreadMutex m_busyMutex;//when visit busy list,use m_busyMutex to lock or unlock
