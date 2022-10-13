@@ -18,7 +18,7 @@
 class CThreadPool{
     friend class CWorkerThread;
 private:
-    unsigned int m_Maxnum; //当前线程池中允许并发存在的线程的最大数量
+    unsigned int m_MaxNum; //当前线程池中允许并发存在的线程的最大数量
     unsigned int m_AvailLow; //当前线程池中允许存在的空闲线程的最小数目
     /**
      * 如果空闲数目低于该值，表明负载可能过重，此时有必要增加空闲线程池的数目
