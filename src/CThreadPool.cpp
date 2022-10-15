@@ -88,3 +88,128 @@ void CThreadPool::TerminateAll(){
     }
 }
 
+CWorkerThread* CThreadPool::getIdleThread(){
+    while(m_vecIdleThreads.size() == 0){
+        printf("no idle thread,must wait\n");
+        m_idleCond.wait();
+    }
+    m_IdleMutex.lock();
+    if(m_vecIdleThreads.size() > 0){
+        CWorkerThread* idleThread = static_cast<CWorkerThread*>(m_vecIdleThreads.front());
+        printf("get idle thread %d\n",idleThread->getThreadId());
+        m_IdleMutex.unLock();
+        return idleThread;
+    }
+    m_IdleMutex.unLock();
+    printf("%warnig : no idle threads return\n");
+    return NULL;
+}
+
+void CThreadPool::appendToIdleList(CWorkerThread* jobThread){
+    m_IdleMutex.lock();
+    m_vecIdleThreads.push_back(jobThread);
+    m_vecAllThreads.push_back(jobThread);
+    m_IdleMutex.unLock();
+}
+
+void CThreadPool::moveToBusyList(CWorkerThread* idleThread){
+    m_busyMutex.lock();
+    m_vecBusyThreads.push_back(idleThread);
+    m_CurIdleThreadNum--;
+    m_busyMutex.unLock();
+
+    m_IdleMutex.lock();
+    auto pos = std::find(m_vecIdleThreads.begin(),m_vecIdleThreads.end(),idleThread);
+    if(pos != m_vecIdleThreads.end()){
+        m_vecIdleThreads.erase(pos);
+    }
+    m_IdleMutex.unLock();
+
+}
+
+
+void CThreadPool::moveToIdleList(CWorkerThread* busyThread){
+    m_IdleMutex.lock();
+    m_vecIdleThreads.push_back(busyThread);
+    m_CurIdleThreadNum++;
+    m_IdleMutex.unLock();
+
+    m_busyMutex.lock();
+    auto pos = std::find(m_vecBusyThreads.begin(),m_vecBusyThreads.end(),busyThread);
+    if(pos != m_vecBusyThreads.end()){
+        m_vecBusyThreads.erase(pos);
+    }
+    m_busyMutex.unLock();
+    m_idleCond.signal();
+    m_maxNUmCond.signal();
+}
+
+
+void CThreadPool::createIdleThread(int num){
+    for(int i = 0;i < num;i++){
+        CWorkerThread* workThread = new CWorkerThread();
+        workThread->setThreadPool(this);
+        appendToIdleList(workThread);
+        m_threadNumMutex.lock();
+        m_CurIdleThreadNum++;
+        m_threadNumMutex.unLock();
+        workThread->start();
+    }
+}
+
+void CThreadPool::deleteIdleThread(int num){
+    printf("Enter into CThreadPool::deleteIdleThread\n");
+    m_IdleMutex.lock();
+    printf("delete num is %d\n",num);
+    for(int i = 0;i < num;i++){
+        CWorkerThread* workThread;
+        if(m_vecIdleThreads.size() > 0){
+            workThread = static_cast<CWorkerThread*>(m_vecIdleThreads.front());
+            printf("get Idle thread %d\n",workThread->getThreadId());
+        }else{
+            printf("no Idle thread,no need to delete thread\n");
+            break;
+        }
+        auto pos = std::find(m_vecIdleThreads.begin(),m_vecIdleThreads.end(),workThread);
+        if(pos != m_vecIdleThreads.end()){
+            m_vecIdleThreads.erase(pos);
+        }
+        m_CurIdleThreadNum--;
+        printf("The Idle thread available num %d\n",m_CurIdleThreadNum);
+        printf("The IdleList num %d\n",m_vecIdleThreads.size());
+    }
+    m_IdleMutex.unLock();
+}
+
+void CThreadPool::run(CJob* job,void* jobData){
+    assert(NULL != job);
+    /**
+     * printf要输出的内容太长了，需要写在多，则每一行都需要用双引号包含起来
+    */
+    if(m_MaxNum <= getBusyThreadsNum()){
+        printf("busy threads beyond the max threads number in the pool" 
+        "must wait for Idle threads\n");
+        m_maxNUmCond.wait();
+    }
+    //负载过重，线程少，需要创建新的线程
+    if(m_vecIdleThreads.size() < m_AvailLow){
+        if(getAllThreadsNum() + m_InitThreadNum - m_vecIdleThreads.size() < m_MaxNum){
+            //当前有m_vecIdleThreads.size()个空闲线程
+            createIdleThread(m_InitThreadNum - m_vecIdleThreads.size());
+        }else{
+            createIdleThread(m_MaxNum - getAllThreadsNum());
+        }
+    }
+    auto workThread = getIdleThread();
+    if(NULL != workThread){
+        workThread->m_workMutex.lock();
+        moveToBusyList(workThread);
+        workThread->setThreadPool(this);
+        job->setWorkThread(workThread);
+        printf("Job [%d] bind to thread [%d]\n",job->getJobNo(),workThread->getThreadId());
+        workThread->addNewJob(job,jobData);
+        workThread->m_workMutex.unLock();
+    }else{
+        printf("impossible to going here\n");
+    }
+}
